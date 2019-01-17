@@ -1,0 +1,109 @@
+---
+title: "Rosyjskie szlaki handlowe"
+author: "Marcin Wilczyński"
+date: "17 stycznia 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(13)
+```
+
+## Wczytywanie danych 
+
+Dane pobrano z <http://tuvalu.santafe.edu/~aaronc/data/russiantrade.zip>. Dotyczą one sieci szlaków handlowych w średniowiecznej Rosji. Wierzchołki grafu przedstawiają miasta, a krawędzie drogi między nimi. Krawędzie nie posiadają wag. Dane w pliku mają postać listy krawędzi.
+
+
+```{r data_loading}
+raw_data <- read.csv("data//russiantrade_edges.txt", sep = "\t", header = FALSE)
+head(raw_data)
+  
+```
+
+## Biblioteka
+
+Do analizy grafu wykorzystano bibliotekę igraph. Porównanie grafu z pliku z materiałem źródłowym (załączonym przez autorów do pliku z danymi) ukazało pojedyncze brakujące krawędzie. Zostały dodane do źródłowego pliku.
+
+```{r library, warning=FALSE, message=FALSE}
+library(igraph)
+net <- graph.data.frame(raw_data,directed=FALSE)
+l <-layout.auto(net) 
+plot(net, layout = l)
+```
+
+## Charakterystyka zbioru danych
+
+```{r degree_dist}
+degrees <- degree(net)
+hist(degrees, breaks = 0:6, main = "Rozkład stopni wierzchołków")
+```
+
+```{r shortes_path_dist}
+net_distances <- distances(net)
+net_distances[lower.tri(net_distances)] <- 0
+net_distances_vec <- as.vector(net_distances)
+net_distances_vec <- net_distances_vec[net_distances_vec>0]
+hist(net_distances_vec, breaks = 0:8, main = "Rozkład długości najkrótszych ścieżek")
+```
+
+```{r betweenness}
+betweenness_net <- betweenness(net)
+hist(betweenness_net, main = "Rozkład współczynnika pośrednictwa")
+```
+
+```{r transitivity}
+transitivity_net = transitivity(net, type="local", isolates="zero")
+hist(transitivity_net, main = "Rozkład lokalnych współczynników grupowania")
+```
+
+Miary oceny gęstości sieci:
+```{r centralization}
+density_net <- edge_density(net)
+diameter_net <- diameter(net)
+centralization_net <- centr_degree(net, mode="total")$centralization
+```
+
+- gęstość: `r density_net`
+- współczynnik centralizacji: `r centralization_net`
+- promień: `r diameter_net`
+
+## Pytania biznesowe
+
+### Główny magazyn
+
+Klient, średniowieczny kupiec, szuka miejsca na główny magazyn. Analityk zasugerował mu wybudowanie go w jednej z miejscowości o największym współczynniku pośrednictwa, ponieważ jest to miejsce przez które przechodzi najwięcej najkrótszych ścieżek pomiędzy innymi miejscowościami.
+
+```{r vis_1}
+oranges <- colorRampPalette(c("dark red", "gold"))
+betweenness_net <- betweenness(net)
+fine = 500
+graphCol = oranges(fine)[as.numeric(cut(betweenness_net,breaks = fine))]
+plot(net, vertex.color=graphCol, layout = l)
+title(main = "Wizualizacja pośrednictwa")
+```
+
+Analityk zaproponował również aby klient wziął pod uwagę bliskość jako interesujący wskaźnik. Pomoże on znaleźć miejscowość, z której jest średnio najbliżej do wszystkich innych miejscowości.
+
+```{r vis_2}
+oranges <- colorRampPalette(c("dark red", "gold"))
+closeness_net <- closeness(net, normalized = TRUE)
+fine = 500
+graphCol = oranges(fine)[as.numeric(cut(closeness_net,breaks = fine))]
+plot(net, vertex.color=graphCol, layout = l)
+title(main = "Wizualizacja bliskości")
+```
+
+### Najdłuższa możliwa trasa
+
+Dla klienta kluczowym parametrem jest minimalizacja liczby miast, które pokonuje aby przetransportować towar z miasta A do B. Zadał zatem pytanie analitykowi o najdłuższą pod względem liczby odwiedzonych miast, najkrótszą trasę pomiędzy dowolnymi dwoma miastami.
+
+```{r vis_3}
+diam <- get_diameter(net)
+vcol <- rep("gray40", vcount(net))
+vcol[diam] <- "gold"
+ecol <- rep("gray80", ecount(net))
+ecol[E(net, path=diam)] <- "orange" 
+plot(net, vertex.color=vcol, edge.color=ecol, layout = l)
+title(main = "Wizualizacja najdłuższej z najkrótszych ścieżek")
+```
